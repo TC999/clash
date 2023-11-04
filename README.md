@@ -34,11 +34,11 @@ This is a general overview of the features that comes with Clash.
 - Remote Providers: load remote proxy lists dynamically
 - RESTful API: update configuration in-place via a comprehensive API
 
-*Some of the features may only be available in the [Premium core](https://dreamacro.github.io/clash/premium/introduction.html).*
+*Some of the features may only be available in the [Premium core](https://doreamon-design.github.io/clash/premium/introduction.html).*
 
 ## Documentation
 
-You can find the latest documentation at [https://dreamacro.github.io/clash/](https://dreamacro.github.io/clash/).
+You can find the latest documentation at [https://doreamon-design.github.io/clash/](https://doreamon-design.github.io/clash/).
 
 ## Credits
 
