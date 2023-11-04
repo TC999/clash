@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"runtime"
 	"syscall"
 	_ "time/tzdata"
 
@@ -43,7 +42,8 @@ func init() {
 func main() {
 	maxprocs.Set(maxprocs.Logger(func(string, ...any) {}))
 	if version_ {
-		fmt.Printf("Clash %s %s %s with %s %s\n", C.Version, runtime.GOOS, runtime.GOARCH, runtime.Version(), C.BuildTime)
+		// fmt.Printf("Clash %s %s %s with %s %s\n", C.Version, runtime.GOOS, runtime.GOARCH, runtime.Version(), C.BuildTime)
+		fmt.Printf("v%s\n", Version)
 		return
 	}
 
