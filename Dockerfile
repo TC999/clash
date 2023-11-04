@@ -30,7 +30,9 @@ RUN git clone https://github.com/doreamon-design/clash-dashboard /build
 
 WORKDIR /build
 
-RUN yarn
+# RUN yarn
+
+RUN npm i --legacy-peer-deps
 
 RUN yarn build
 
