@@ -24,13 +24,33 @@ RUN CGO_ENABLED=0 \
   -ldflags '-w -s -buildid=' \
   -v -o /clash ./cmd/clash
 
+FROM whatwewant/builder-node:v20-1 as builder-ui
+
+ADD https://github.com/doreamon-design/clash-board /build
+
+WORKDIR /build
+
+RUN yarn
+
+RUN yarn build
+
 FROM whatwewant/alpine:v3.17-1
+
+ENV TZ=Asia/Shanghai
 
 LABEL org.opencontainers.image.source="https://github.com/doreamon-design/clash"
 
+ENV CLASH_OVERRIDE_EXTERNAL_UI_DIR=/etc/clash/ui
+
+ENV CLASH_CONFIG_FILE=/etc/clash/config.yaml
+
+ENV CLASH_HOME_DIR=/etc/clash
+
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
-COPY --from=builder /Country.mmdb /root/.config/clash/
+COPY --from=builder-ui /build/dist /etc/clash/ui
+
+COPY --from=builder /Country.mmdb /etc/clash/
 
 COPY --from=builder /clash /usr/bin
 

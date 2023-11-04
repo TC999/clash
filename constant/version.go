@@ -1,6 +1,8 @@
 package constant
 
+import "github.com/doreamon-design/clash"
+
 var (
-	Version   = "unknown version"
+	Version   = clash.Version
 	BuildTime = "unknown time"
 )
