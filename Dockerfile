@@ -26,7 +26,7 @@ RUN CGO_ENABLED=0 \
 
 FROM whatwewant/builder-node:v20-1 as builder-ui
 
-ADD https://github.com/doreamon-design/clash-board /build
+ADD https://github.com/doreamon-design/clash-dashboard /build
 
 WORKDIR /build
 
