@@ -20,7 +20,7 @@ import (
 )
 
 var (
-	version            bool
+	version_           bool
 	testConfig         bool
 	homeDir            string
 	configFile         string
@@ -35,14 +35,14 @@ func init() {
 	flag.StringVar(&externalUI, "ext-ui", os.Getenv("CLASH_OVERRIDE_EXTERNAL_UI_DIR"), "override external ui directory")
 	flag.StringVar(&externalController, "ext-ctl", os.Getenv("CLASH_OVERRIDE_EXTERNAL_CONTROLLER"), "override external controller address")
 	flag.StringVar(&secret, "secret", os.Getenv("CLASH_OVERRIDE_SECRET"), "override secret for RESTful API")
-	flag.BoolVar(&version, "v", false, "show current version of clash")
+	flag.BoolVar(&version_, "v", false, "show current version of clash")
 	flag.BoolVar(&testConfig, "t", false, "test configuration and exit")
 	flag.Parse()
 }
 
 func main() {
 	maxprocs.Set(maxprocs.Logger(func(string, ...any) {}))
-	if version {
+	if version_ {
 		fmt.Printf("Clash %s %s %s with %s %s\n", C.Version, runtime.GOOS, runtime.GOARCH, runtime.Version(), C.BuildTime)
 		return
 	}
