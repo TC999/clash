@@ -6,6 +6,9 @@ import (
 	C "github.com/Dreamacro/clash/constant"
 )
 
+// Implements C.Rule
+var _ C.Rule = (*DomainKeyword)(nil)
+
 type DomainKeyword struct {
 	keyword string
 	adapter string
@@ -16,11 +19,7 @@ func (dk *DomainKeyword) RuleType() C.RuleType {
 }
 
 func (dk *DomainKeyword) Match(metadata *C.Metadata) bool {
-	if metadata.AddrType != C.AtypDomainName {
-		return false
-	}
-	domain := metadata.Host
-	return strings.Contains(domain, dk.keyword)
+	return strings.Contains(metadata.Host, dk.keyword)
 }
 
 func (dk *DomainKeyword) Adapter() string {
@@ -32,6 +31,10 @@ func (dk *DomainKeyword) Payload() string {
 }
 
 func (dk *DomainKeyword) ShouldResolveIP() bool {
+	return false
+}
+
+func (dk *DomainKeyword) ShouldFindProcess() bool {
 	return false
 }
 

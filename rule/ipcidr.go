@@ -20,6 +20,9 @@ func WithIPCIDRNoResolve(noResolve bool) IPCIDROption {
 	}
 }
 
+// Implements C.Rule
+var _ C.Rule = (*IPCIDR)(nil)
+
 type IPCIDR struct {
 	ipnet       *net.IPNet
 	adapter     string
@@ -52,6 +55,10 @@ func (i *IPCIDR) Payload() string {
 
 func (i *IPCIDR) ShouldResolveIP() bool {
 	return !i.noResolveIP
+}
+
+func (i *IPCIDR) ShouldFindProcess() bool {
+	return false
 }
 
 func NewIPCIDR(s string, adapter string, opts ...IPCIDROption) (*IPCIDR, error) {
