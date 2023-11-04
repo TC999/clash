@@ -34,7 +34,7 @@ WORKDIR /build
 
 RUN npm i --legacy-peer-deps
 
-RUN yarn build
+RUN NODE_OPTIONS="--openssl-legacy-provider" yarn build
 
 FROM whatwewant/alpine:v3.17-1
 
