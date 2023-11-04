@@ -12,7 +12,13 @@ RUN go mod download
 
 COPY . .
 
+ARG TARGETOS
+
+ARG TARGETARCH
+
 RUN CGO_ENABLED=0 \
+  GOOS=${TARGETOS} \
+  GOARCH=${TARGETARCH} \
   go build \
   -trimpath \
   -ldflags '-w -s -buildid=' \
