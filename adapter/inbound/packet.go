@@ -4,8 +4,8 @@ import (
 	"net"
 	"net/netip"
 
-	C "github.com/Dreamacro/clash/constant"
-	"github.com/Dreamacro/clash/transport/socks5"
+	C "github.com/doreamon-design/clash/constant"
+	"github.com/doreamon-design/clash/transport/socks5"
 )
 
 // PacketAdapter is a UDP Packet adapter for socks/redir/tun

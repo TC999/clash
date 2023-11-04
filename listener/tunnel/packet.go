@@ -3,7 +3,7 @@ package tunnel
 import (
 	"net"
 
-	"github.com/Dreamacro/clash/common/pool"
+	"github.com/doreamon-design/clash/common/pool"
 )
 
 type packet struct {

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Dreamacro/clash/common/pool"
-	"github.com/Dreamacro/clash/transport/ssr/tools"
+	"github.com/doreamon-design/clash/common/pool"
+	"github.com/doreamon-design/clash/transport/ssr/tools"
 )
 
 func init() {
