@@ -4,7 +4,7 @@ VERSION=$(shell git describe --tags || echo "unknown version")
 BUILDTIME=$(shell date -u)
 GOBUILD=CGO_ENABLED=0 go build -trimpath -ldflags '-X "github.com/doreamon-design/clash/constant.Version=$(VERSION)" \
 		-X "github.com/doreamon-design/clash/constant.BuildTime=$(BUILDTIME)" \
-		-w -s -buildid='
+		-w -s -buildid=' ./cmd/clash
 
 PLATFORM_LIST = \
 	darwin-amd64 \
