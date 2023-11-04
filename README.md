@@ -36,6 +36,12 @@ This is a general overview of the features that comes with Clash.
 
 *Some of the features may only be available in the [Premium core](https://doreamon-design.github.io/clash/premium/introduction.html).*
 
+## Installation
+
+```bash
+curl -o- https://raw.githubusercontent.com/zmicro-design/package-clash/master/install | sh -s -- ONE_LINE 
+```
+
 ## Documentation
 
 You can find the latest documentation at [https://doreamon-design.github.io/clash/](https://doreamon-design.github.io/clash/).
