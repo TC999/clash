@@ -26,7 +26,7 @@ RUN CGO_ENABLED=0 \
 
 FROM --platform=${BUILDPLATFORM} whatwewant/builder-node:v20-1 as builder-ui
 
-RUN git clone https://github.com/doreamon-design/clash-dashboard /build
+RUN git clone https://github.com/doreamon-design/clash-dashboard -b master /build
 
 WORKDIR /build
 
