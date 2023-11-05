@@ -31,9 +31,11 @@ RUN git clone https://github.com/doreamon-design/clash-dashboard /build
 WORKDIR /build
 
 RUN yarn
-# RUN npm i --legacy-peer-deps
 
-RUN NODE_OPTIONS="--openssl-legacy-provider" yarn build
+RUN yarn build
+
+# RUN npm i --legacy-peer-deps
+# RUN NODE_OPTIONS="--openssl-legacy-provider" yarn build
 
 FROM whatwewant/alpine:v3.17-1
 
