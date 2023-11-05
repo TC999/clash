@@ -30,9 +30,8 @@ RUN git clone https://github.com/doreamon-design/clash-dashboard /build
 
 WORKDIR /build
 
-# RUN yarn
-
-RUN npm i --legacy-peer-deps
+RUN yarn
+# RUN npm i --legacy-peer-deps
 
 RUN NODE_OPTIONS="--openssl-legacy-provider" yarn build
 
