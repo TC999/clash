@@ -6,34 +6,25 @@ import (
 	C "github.com/doreamon-design/clash/constant"
 	"github.com/doreamon-design/clash/listener"
 	"github.com/doreamon-design/clash/tunnel"
-
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/render"
+	"github.com/go-zoox/zoox"
 )
 
-func inboundRouter() http.Handler {
-	r := chi.NewRouter()
-	r.Get("/", getInbounds)
-	r.Put("/", updateInbounds)
-	return r
-}
-
-func getInbounds(w http.ResponseWriter, r *http.Request) {
+func getInbounds(ctx *zoox.Context) {
 	inbounds := listener.GetInbounds()
-	render.JSON(w, r, render.M{
+
+	ctx.JSON(http.StatusOK, zoox.H{
 		"inbounds": inbounds,
 	})
 }
 
-func updateInbounds(w http.ResponseWriter, r *http.Request) {
+func updateInbounds(ctx *zoox.Context) {
 	var req []C.Inbound
-	if err := render.DecodeJSON(r.Body, &req); err != nil {
-		render.Status(r, http.StatusBadRequest)
-		render.JSON(w, r, ErrBadRequest)
+	if err := ctx.BindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, ErrBadRequest)
 		return
 	}
 	tcpIn := tunnel.TCPIn()
 	udpIn := tunnel.UDPIn()
 	listener.ReCreateListeners(req, tcpIn, udpIn)
-	render.NoContent(w, r)
+	ctx.Status(http.StatusNoContent)
 }

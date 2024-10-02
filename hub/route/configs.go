@@ -11,26 +11,17 @@ import (
 	"github.com/doreamon-design/clash/listener"
 	"github.com/doreamon-design/clash/log"
 	"github.com/doreamon-design/clash/tunnel"
+	"github.com/go-zoox/zoox"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/render"
 	"github.com/samber/lo"
 )
 
-func configRouter() http.Handler {
-	r := chi.NewRouter()
-	r.Get("/", getConfigs)
-	r.Put("/", updateConfigs)
-	r.Patch("/", patchConfigs)
-	return r
-}
-
-func getConfigs(w http.ResponseWriter, r *http.Request) {
+func getConfigs(ctx *zoox.Context) {
 	general := executor.GetGeneral()
-	render.JSON(w, r, general)
+	ctx.JSON(http.StatusOK, general)
 }
 
-func patchConfigs(w http.ResponseWriter, r *http.Request) {
+func patchConfigs(ctx *zoox.Context) {
 	general := struct {
 		Port        *int               `json:"port"`
 		SocksPort   *int               `json:"socks-port"`
@@ -43,9 +34,8 @@ func patchConfigs(w http.ResponseWriter, r *http.Request) {
 		LogLevel    *log.LogLevel      `json:"log-level"`
 		IPv6        *bool              `json:"ipv6"`
 	}{}
-	if err := render.DecodeJSON(r.Body, &general); err != nil {
-		render.Status(r, http.StatusBadRequest)
-		render.JSON(w, r, ErrBadRequest)
+	if err := ctx.BindJSON(&general); err != nil {
+		ctx.JSON(http.StatusBadRequest, ErrBadRequest)
 		return
 	}
 
@@ -78,29 +68,27 @@ func patchConfigs(w http.ResponseWriter, r *http.Request) {
 
 	listener.ReCreatePortsListeners(*ports, tunnel.TCPIn(), tunnel.UDPIn())
 
-	render.NoContent(w, r)
+	ctx.Status(http.StatusNoContent)
 }
 
-func updateConfigs(w http.ResponseWriter, r *http.Request) {
+func updateConfigs(ctx *zoox.Context) {
 	req := struct {
 		Path    string `json:"path"`
 		Payload string `json:"payload"`
 	}{}
-	if err := render.DecodeJSON(r.Body, &req); err != nil {
-		render.Status(r, http.StatusBadRequest)
-		render.JSON(w, r, ErrBadRequest)
+	if err := ctx.BindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, ErrBadRequest)
 		return
 	}
 
-	force := r.URL.Query().Get("force") == "true"
+	force := ctx.Query().Get("force").Bool()
 	var cfg *config.Config
 	var err error
 
 	if req.Payload != "" {
 		cfg, err = executor.ParseWithBytes([]byte(req.Payload))
 		if err != nil {
-			render.Status(r, http.StatusBadRequest)
-			render.JSON(w, r, newError(err.Error()))
+			ctx.JSON(http.StatusBadRequest, newError(err.Error()))
 			return
 		}
 	} else {
@@ -108,19 +96,17 @@ func updateConfigs(w http.ResponseWriter, r *http.Request) {
 			req.Path = C.Path.Config()
 		}
 		if !filepath.IsAbs(req.Path) {
-			render.Status(r, http.StatusBadRequest)
-			render.JSON(w, r, newError("path is not a absolute path"))
+			ctx.JSON(http.StatusBadRequest, newError("path is not a absolute path"))
 			return
 		}
 
 		cfg, err = executor.ParseWithPath(req.Path)
 		if err != nil {
-			render.Status(r, http.StatusBadRequest)
-			render.JSON(w, r, newError(err.Error()))
+			ctx.JSON(http.StatusBadRequest, newError(err.Error()))
 			return
 		}
 	}
 
 	executor.ApplyConfig(cfg, force)
-	render.NoContent(w, r)
+	ctx.Status(http.StatusNoContent)
 }

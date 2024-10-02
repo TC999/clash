@@ -3,48 +3,30 @@ package route
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/doreamon-design/clash/tunnel/statistic"
+	"github.com/go-zoox/zoox"
 
 	"github.com/Dreamacro/protobytes"
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/render"
 	"github.com/gorilla/websocket"
 )
 
-func connectionRouter() http.Handler {
-	r := chi.NewRouter()
-	r.Get("/", getConnections)
-	r.Delete("/", closeAllConnections)
-	r.Delete("/{id}", closeConnection)
-	return r
-}
-
-func getConnections(w http.ResponseWriter, r *http.Request) {
-	if !websocket.IsWebSocketUpgrade(r) {
+func getConnections(ctx *zoox.Context) {
+	if !websocket.IsWebSocketUpgrade(ctx.Request) {
 		snapshot := statistic.DefaultManager.Snapshot()
-		render.JSON(w, r, snapshot)
+		ctx.JSON(http.StatusOK, snapshot)
 		return
 	}
 
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := upgrader.Upgrade(ctx.Writer, ctx.Request, nil)
 	if err != nil {
 		return
 	}
 
-	intervalStr := r.URL.Query().Get("interval")
-	interval := 1000
-	if intervalStr != "" {
-		t, err := strconv.Atoi(intervalStr)
-		if err != nil {
-			render.Status(r, http.StatusBadRequest)
-			render.JSON(w, r, ErrBadRequest)
-			return
-		}
-
-		interval = t
+	interval := ctx.Query().Get("interval").Int()
+	if interval == 0 {
+		interval = 1000
 	}
 
 	buf := protobytes.BytesWriter{}
@@ -71,8 +53,8 @@ func getConnections(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func closeConnection(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
+func closeConnection(ctx *zoox.Context) {
+	id := ctx.Param().Get("id").String()
 	snapshot := statistic.DefaultManager.Snapshot()
 	for _, c := range snapshot.Connections {
 		if id == c.ID() {
@@ -80,13 +62,15 @@ func closeConnection(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
-	render.NoContent(w, r)
+
+	ctx.Status(http.StatusNoContent)
 }
 
-func closeAllConnections(w http.ResponseWriter, r *http.Request) {
+func closeAllConnections(ctx *zoox.Context) {
 	snapshot := statistic.DefaultManager.Snapshot()
 	for _, c := range snapshot.Connections {
 		c.Close()
 	}
-	render.NoContent(w, r)
+
+	ctx.Status(http.StatusNoContent)
 }

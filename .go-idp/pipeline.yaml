@@ -1,0 +1,12 @@
+name: build and release docker image
+
+environment:
+  VERSION: v2
+
+stages:
+  - name: build
+    jobs:
+      - name: build
+        steps:
+          - name: build
+            command: docker buildx build -t whatwewant/clash:${VERSION} .

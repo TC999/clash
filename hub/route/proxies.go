@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/doreamon-design/clash/adapter"
@@ -12,117 +11,99 @@ import (
 	"github.com/doreamon-design/clash/component/profile/cachefile"
 	C "github.com/doreamon-design/clash/constant"
 	"github.com/doreamon-design/clash/tunnel"
-
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/render"
+	"github.com/go-zoox/zoox"
 )
 
-func proxyRouter() http.Handler {
-	r := chi.NewRouter()
-	r.Get("/", getProxies)
-
-	r.Route("/{name}", func(r chi.Router) {
-		r.Use(parseProxyName, findProxyByName)
-		r.Get("/", getProxy)
-		r.Get("/delay", getProxyDelay)
-		r.Put("/", updateProxy)
-	})
-	return r
-}
-
-func parseProxyName(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		name := getEscapeParam(r, "name")
-		ctx := context.WithValue(r.Context(), CtxKeyProxyName, name)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
-func findProxyByName(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		name := r.Context().Value(CtxKeyProxyName).(string)
-		proxies := tunnel.Proxies()
-		proxy, exist := proxies[name]
-		if !exist {
-			render.Status(r, http.StatusNotFound)
-			render.JSON(w, r, ErrNotFound)
-			return
-		}
-
-		ctx := context.WithValue(r.Context(), CtxKeyProxy, proxy)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
-func getProxies(w http.ResponseWriter, r *http.Request) {
+func getProxyFromContext(ctx *zoox.Context) (C.Proxy, error) {
+	name := ctx.Param().Get("name").String()
 	proxies := tunnel.Proxies()
-	render.JSON(w, r, render.M{
+	if proxy, ok := proxies[name]; !ok {
+		return nil, ErrNotFound
+	} else {
+		return proxy, nil
+	}
+}
+
+func getProxies(ctx *zoox.Context) {
+	proxies := tunnel.Proxies()
+	ctx.JSON(http.StatusOK, zoox.H{
 		"proxies": proxies,
 	})
 }
 
-func getProxy(w http.ResponseWriter, r *http.Request) {
-	proxy := r.Context().Value(CtxKeyProxy).(C.Proxy)
-	render.JSON(w, r, proxy)
-}
-
-func updateProxy(w http.ResponseWriter, r *http.Request) {
-	req := struct {
-		Name string `json:"name"`
-	}{}
-	if err := render.DecodeJSON(r.Body, &req); err != nil {
-		render.Status(r, http.StatusBadRequest)
-		render.JSON(w, r, ErrBadRequest)
+func getProxy(ctx *zoox.Context) {
+	proxy, err := getProxyFromContext(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusNotFound, err)
 		return
 	}
 
-	proxy := r.Context().Value(CtxKeyProxy).(*adapter.Proxy)
-	selector, ok := proxy.ProxyAdapter.(*outboundgroup.Selector)
+	ctx.JSON(http.StatusOK, proxy)
+}
+
+func updateProxy(ctx *zoox.Context) {
+	req := struct {
+		Name string `json:"name"`
+	}{}
+	if err := ctx.BindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, ErrBadRequest)
+		return
+	}
+
+	proxy, err := getProxyFromContext(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusNotFound, err)
+		return
+	}
+
+	proxy.Name()
+
+	aProxy, ok := proxy.(*adapter.Proxy)
 	if !ok {
-		render.Status(r, http.StatusBadRequest)
-		render.JSON(w, r, newError("Must be a Selector"))
+		ctx.JSON(http.StatusInternalServerError, newError("failed to transform proxy to *adapter.Proxy"))
+		return
+	}
+
+	selector, ok := aProxy.ProxyAdapter.(*outboundgroup.Selector)
+	if !ok {
+		ctx.JSON(http.StatusBadRequest, newError("Must be a Selector"))
 		return
 	}
 
 	if err := selector.Set(req.Name); err != nil {
-		render.Status(r, http.StatusBadRequest)
-		render.JSON(w, r, newError(fmt.Sprintf("Selector update error: %s", err.Error())))
+		ctx.JSON(http.StatusBadRequest, newError(fmt.Sprintf("Selector update error: %s", err.Error())))
 		return
 	}
 
 	cachefile.Cache().SetSelected(proxy.Name(), req.Name)
-	render.NoContent(w, r)
+	ctx.Status(http.StatusNoContent)
 }
 
-func getProxyDelay(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query()
-	url := query.Get("url")
-	timeout, err := strconv.ParseInt(query.Get("timeout"), 10, 16)
+func getProxyDelay(ctx *zoox.Context) {
+	url := ctx.Query().Get("url").String()
+	timeout := ctx.Query().Get("timeout").Int()
+
+	proxy, err := getProxyFromContext(ctx)
 	if err != nil {
-		render.Status(r, http.StatusBadRequest)
-		render.JSON(w, r, ErrBadRequest)
+		ctx.JSON(http.StatusNotFound, err)
 		return
 	}
 
-	proxy := r.Context().Value(CtxKeyProxy).(C.Proxy)
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*time.Duration(timeout))
+	ctx2, cancel := context.WithTimeout(context.Background(), time.Millisecond*time.Duration(timeout))
 	defer cancel()
 
-	delay, meanDelay, err := proxy.URLTest(ctx, url)
-	if ctx.Err() != nil {
-		render.Status(r, http.StatusGatewayTimeout)
-		render.JSON(w, r, ErrRequestTimeout)
+	delay, meanDelay, err := proxy.URLTest(ctx2, url)
+	if ctx2.Err() != nil {
+		ctx.JSON(http.StatusGatewayTimeout, ErrRequestTimeout)
 		return
 	}
 
 	if err != nil || delay == 0 {
-		render.Status(r, http.StatusServiceUnavailable)
-		render.JSON(w, r, newError("An error occurred in the delay test"))
+		ctx.JSON(http.StatusServiceUnavailable, newError("An error occurred in the delay test"))
 		return
 	}
 
-	render.JSON(w, r, render.M{
+	ctx.JSON(http.StatusOK, zoox.H{
 		"delay":     delay,
 		"meanDelay": meanDelay,
 	})

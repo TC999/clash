@@ -4,20 +4,21 @@ import (
 	"bytes"
 	"crypto/subtle"
 	"encoding/json"
-	"net"
+	"fmt"
 	"net/http"
-	"strings"
 	"time"
 	"unsafe"
 
+	"github.com/doreamon-design/clash"
 	C "github.com/doreamon-design/clash/constant"
 	"github.com/doreamon-design/clash/log"
 	"github.com/doreamon-design/clash/tunnel/statistic"
+	"github.com/go-zoox/logger"
+	"github.com/go-zoox/zoox"
+	"github.com/go-zoox/zoox/defaults"
+	"github.com/go-zoox/zoox/middleware"
 
 	"github.com/Dreamacro/protobytes"
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/cors"
-	"github.com/go-chi/render"
 	"github.com/gorilla/websocket"
 )
 
@@ -51,51 +52,105 @@ func Start(addr string, secret string) {
 	serverAddr = addr
 	serverSecret = secret
 
-	r := chi.NewRouter()
+	app := defaults.Default()
 
-	cors := cors.New(cors.Options{
-		AllowedOrigins: []string{"*"},
-		AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE"},
-		AllowedHeaders: []string{"Content-Type", "Authorization"},
-		MaxAge:         300,
-	})
+	app.SetBanner(fmt.Sprintf(`
+   ___                                      ___          _             _______         __ 
+  / _ \___  _______ ___ ___ _  ___  ___    / _ \___ ___ (_)__ ____    / ___/ /__ ____ / / 
+ / // / _ \/ __/ -_) _ '/  ' \/ _ \/ _ \  / // / -_|_-</ / _ '/ _ \  / /__/ / _ '(_-</ _ \
+/____/\___/_/  \__/\_,_/_/_/_/\___/_//_/ /____/\__/___/_/\_, /_//_/  \___/_/\_,_/___/_//_/
+                                                        /___/                              v%s																						                             
+----------------------------------------------------------------
+Maintainner: Zero (tobewhatwewant@gmail.com)
+GitHub: https://github.com/doreamon-design/clash
+`, clash.Version))
 
-	r.Use(cors.Handler)
-	r.Group(func(r chi.Router) {
+	// cors := cors.New(cors.Options{
+	// 	AllowedOrigins: []string{"*"},
+	// 	AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE"},
+	// 	AllowedHeaders: []string{"Content-Type", "Authorization"},
+	// 	MaxAge:         300,
+	// })
+	// r.Use(cors.Handler)
+	app.Use(middleware.CORS(&middleware.CorsConfig{
+		AllowOrigins: []string{"*"},
+		AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE"},
+		AllowHeaders: []string{"Content-Type", "Authorization"},
+		MaxAge:       300,
+	}))
+
+	app.Group("/", func(r *zoox.RouterGroup) {
 		r.Use(authentication)
 
 		r.Get("/", hello)
 		r.Get("/logs", getLogs)
 		r.Get("/traffic", traffic)
 		r.Get("/version", version)
-		r.Mount("/configs", configRouter())
-		r.Mount("/inbounds", inboundRouter())
-		r.Mount("/proxies", proxyRouter())
-		r.Mount("/rules", ruleRouter())
-		r.Mount("/connections", connectionRouter())
-		r.Mount("/providers/proxies", proxyProviderRouter())
-		r.Mount("/dns", dnsRouter())
+		r.Group("/configs", func(r *zoox.RouterGroup) {
+			r.Get("/", getConfigs)
+			r.Put("/", updateConfigs)
+			r.Patch("/", patchConfigs)
+		})
+		r.Group("/inbounds", func(r *zoox.RouterGroup) {
+			r.Get("/", getInbounds)
+			r.Put("/", updateInbounds)
+		})
+		r.Group("/proxies", func(r *zoox.RouterGroup) {
+			r.Get("/", getProxies)
+
+			r.Group("/{name}", func(r *zoox.RouterGroup) {
+				r.Get("/", getProxy)
+				r.Get("/delay", getProxyDelay)
+				r.Put("/", updateProxy)
+			})
+		})
+		r.Group("/rules", func(r *zoox.RouterGroup) {
+			r.Get("/", getRules)
+		})
+		r.Group("/connections", func(r *zoox.RouterGroup) {
+			r.Get("/", getConnections)
+			r.Delete("/", closeAllConnections)
+			r.Delete("/{id}", closeConnection)
+		})
+		r.Group("/providers/proxies", func(r *zoox.RouterGroup) {
+			r.Get("/", getProviders)
+
+			r.Group("/{providerName}", func(r *zoox.RouterGroup) {
+				r.Get("/", getProvider)
+				r.Put("/", updateProvider)
+				r.Get("/healthcheck", healthCheckProvider)
+
+				r.Group("/{name}", func(r *zoox.RouterGroup) {
+					r.Get("/", getProxyFromProvider)
+					r.Get("/healthcheck", getProxyDelayFromProvider)
+				})
+			})
+		})
+		r.Group("/dns", func(r *zoox.RouterGroup) {
+			r.Get("/query", queryDNS)
+		})
 	})
 
 	if uiPath != "" {
-		r.Group(func(r chi.Router) {
-			fs := http.StripPrefix("/ui", http.FileServer(http.Dir(uiPath)))
-			r.Get("/ui", http.RedirectHandler("/ui/", http.StatusTemporaryRedirect).ServeHTTP)
-			r.Get("/ui/*", func(w http.ResponseWriter, r *http.Request) {
-				fs.ServeHTTP(w, r)
-			})
-		})
+		// r.Group(func(r chi.Router) {
+		// 	fs := http.StripPrefix("/ui", http.FileServer(http.Dir(uiPath)))
+		// 	r.Get("/ui", http.RedirectHandler("/ui/", http.StatusTemporaryRedirect).ServeHTTP)
+		// 	r.Get("/ui/*", func(w http.ResponseWriter, r *http.Request) {
+		// 		fs.ServeHTTP(w, r)
+		// 	})
+		// })
+
+		// fs := http.StripPrefix("/ui", http.FileServer(http.Dir(uiPath)))
+		// r.Get("/ui", zoox.WrapH(http.RedirectHandler("/ui/", http.StatusTemporaryRedirect)))
+		// r.Get("/ui/*", zoox.WrapF(func(w http.ResponseWriter, r *http.Request) {
+		// 	fs.ServeHTTP(w, r)
+		// }))
+
+		app.Static("/ui", uiPath)
 	}
 
-	l, err := net.Listen("tcp", addr)
-	if err != nil {
-		log.Errorln("External controller listen error: %s", err)
-		return
-	}
-	serverAddr = l.Addr().String()
-	log.Infoln("RESTful API listening at: %s", serverAddr)
-	if err = http.Serve(l, r); err != nil {
-		log.Errorln("External controller serve error: %s", err)
+	if err := app.Run(addr); err != nil {
+		logger.Errorf("External controller serve error: %s", err)
 	}
 }
 
@@ -105,57 +160,56 @@ func safeEuqal(a, b string) bool {
 	return subtle.ConstantTimeCompare(aBuf, bBuf) == 1
 }
 
-func authentication(next http.Handler) http.Handler {
-	fn := func(w http.ResponseWriter, r *http.Request) {
-		if serverSecret == "" {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		// Browser websocket not support custom header
-		if websocket.IsWebSocketUpgrade(r) && r.URL.Query().Get("token") != "" {
-			token := r.URL.Query().Get("token")
-			if !safeEuqal(token, serverSecret) {
-				render.Status(r, http.StatusUnauthorized)
-				render.JSON(w, r, ErrUnauthorized)
-				return
-			}
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		header := r.Header.Get("Authorization")
-		bearer, token, found := strings.Cut(header, " ")
-
-		hasInvalidHeader := bearer != "Bearer"
-		hasInvalidSecret := !found || !safeEuqal(token, serverSecret)
-		if hasInvalidHeader || hasInvalidSecret {
-			render.Status(r, http.StatusUnauthorized)
-			render.JSON(w, r, ErrUnauthorized)
-			return
-		}
-		next.ServeHTTP(w, r)
+func authentication(ctx *zoox.Context) {
+	if serverSecret == "" {
+		ctx.Next()
+		return
 	}
-	return http.HandlerFunc(fn)
+
+	// Browser websocket not support custom header
+	if websocket.IsWebSocketUpgrade(ctx.Request) && ctx.Query().Get("token").String() != "" {
+		token := ctx.Query().Get("token").String()
+		if !safeEuqal(token, serverSecret) {
+			ctx.JSON(http.StatusUnauthorized, ErrUnauthorized)
+			return
+		}
+
+		ctx.Next()
+		return
+	}
+
+	if token, found := ctx.BearerToken(); !found {
+		ctx.JSON(http.StatusUnauthorized, ErrUnauthorized)
+		return
+	} else if ok := safeEuqal(token, serverSecret); !ok {
+		ctx.JSON(http.StatusUnauthorized, ErrUnauthorized)
+		return
+	}
+
+	ctx.Next()
 }
 
-func hello(w http.ResponseWriter, r *http.Request) {
-	render.JSON(w, r, render.M{"hello": "clash"})
+func hello(ctx *zoox.Context) {
+	ctx.JSON(http.StatusOK, zoox.H{
+		"hello":      "clash",
+		"version":    clash.Version,
+		"running_at": ctx.App.Runtime().RunningAt(),
+	})
 }
 
-func traffic(w http.ResponseWriter, r *http.Request) {
+func traffic(ctx *zoox.Context) {
 	var wsConn *websocket.Conn
-	if websocket.IsWebSocketUpgrade(r) {
+	if websocket.IsWebSocketUpgrade(ctx.Request) {
 		var err error
-		wsConn, err = upgrader.Upgrade(w, r, nil)
+		wsConn, err = upgrader.Upgrade(ctx.Writer, ctx.Request, nil)
 		if err != nil {
 			return
 		}
 	}
 
 	if wsConn == nil {
-		w.Header().Set("Content-Type", "application/json")
-		render.Status(r, http.StatusOK)
+		ctx.Header().Set("Content-Type", "application/json")
+		ctx.Status(http.StatusOK)
 	}
 
 	tick := time.NewTicker(time.Second)
@@ -174,8 +228,8 @@ func traffic(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if wsConn == nil {
-			_, err = w.Write(buf.Bytes())
-			w.(http.Flusher).Flush()
+			_, err = ctx.Writer.Write(buf.Bytes())
+			ctx.Writer.(http.Flusher).Flush()
 		} else {
 			err = wsConn.WriteMessage(websocket.TextMessage, buf.Bytes())
 		}
@@ -191,31 +245,30 @@ type Log struct {
 	Payload string `json:"payload"`
 }
 
-func getLogs(w http.ResponseWriter, r *http.Request) {
-	levelText := r.URL.Query().Get("level")
+func getLogs(ctx *zoox.Context) {
+	levelText := ctx.Query().Get("level").String()
 	if levelText == "" {
 		levelText = "info"
 	}
 
 	level, ok := log.LogLevelMapping[levelText]
 	if !ok {
-		render.Status(r, http.StatusBadRequest)
-		render.JSON(w, r, ErrBadRequest)
+		ctx.JSON(http.StatusBadRequest, ErrBadRequest)
 		return
 	}
 
 	var wsConn *websocket.Conn
-	if websocket.IsWebSocketUpgrade(r) {
+	if websocket.IsWebSocketUpgrade(ctx.Request) {
 		var err error
-		wsConn, err = upgrader.Upgrade(w, r, nil)
+		wsConn, err = upgrader.Upgrade(ctx.Writer, ctx.Request, nil)
 		if err != nil {
 			return
 		}
 	}
 
 	if wsConn == nil {
-		w.Header().Set("Content-Type", "application/json")
-		render.Status(r, http.StatusOK)
+		ctx.Header().Set("Content-Type", "application/json")
+		ctx.Status(http.StatusOK)
 	}
 
 	ch := make(chan log.Event, 1024)
@@ -249,8 +302,8 @@ func getLogs(w http.ResponseWriter, r *http.Request) {
 
 		var err error
 		if wsConn == nil {
-			_, err = w.Write(buf.Bytes())
-			w.(http.Flusher).Flush()
+			_, err = ctx.Writer.Write(buf.Bytes())
+			ctx.Writer.(http.Flusher).Flush()
 		} else {
 			err = wsConn.WriteMessage(websocket.TextMessage, buf.Bytes())
 		}
@@ -261,6 +314,6 @@ func getLogs(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func version(w http.ResponseWriter, r *http.Request) {
-	render.JSON(w, r, render.M{"version": C.Version})
+func version(ctx *zoox.Context) {
+	ctx.JSON(http.StatusOK, zoox.H{"version": C.Version})
 }

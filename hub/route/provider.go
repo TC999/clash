@@ -3,109 +3,125 @@ package route
 import (
 	"context"
 	"net/http"
+	"time"
 
 	C "github.com/doreamon-design/clash/constant"
 	"github.com/doreamon-design/clash/constant/provider"
 	"github.com/doreamon-design/clash/tunnel"
+	"github.com/go-zoox/zoox"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/render"
 	"github.com/samber/lo"
 )
 
-func proxyProviderRouter() http.Handler {
-	r := chi.NewRouter()
-	r.Get("/", getProviders)
-
-	r.Route("/{providerName}", func(r chi.Router) {
-		r.Use(parseProviderName, findProviderByName)
-		r.Get("/", getProvider)
-		r.Put("/", updateProvider)
-		r.Get("/healthcheck", healthCheckProvider)
-		r.Mount("/", proxyProviderProxyRouter())
-	})
-	return r
-}
-
-func proxyProviderProxyRouter() http.Handler {
-	r := chi.NewRouter()
-	r.Route("/{name}", func(r chi.Router) {
-		r.Use(parseProxyName, findProviderProxyByName)
-		r.Get("/", getProxy)
-		r.Get("/healthcheck", getProxyDelay)
-	})
-	return r
-}
-
-func getProviders(w http.ResponseWriter, r *http.Request) {
+func getProviders(ctx *zoox.Context) {
 	providers := tunnel.Providers()
-	render.JSON(w, r, render.M{
+	ctx.JSON(http.StatusOK, zoox.H{
 		"providers": providers,
 	})
 }
 
-func getProvider(w http.ResponseWriter, r *http.Request) {
-	provider := r.Context().Value(CtxKeyProvider).(provider.ProxyProvider)
-	render.JSON(w, r, provider)
-}
-
-func updateProvider(w http.ResponseWriter, r *http.Request) {
-	provider := r.Context().Value(CtxKeyProvider).(provider.ProxyProvider)
-	if err := provider.Update(); err != nil {
-		render.Status(r, http.StatusServiceUnavailable)
-		render.JSON(w, r, newError(err.Error()))
+func getProvider(ctx *zoox.Context) {
+	provider, err := getProviderFromContext(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusNotFound, err)
 		return
 	}
-	render.NoContent(w, r)
+
+	ctx.JSON(http.StatusOK, provider)
 }
 
-func healthCheckProvider(w http.ResponseWriter, r *http.Request) {
-	provider := r.Context().Value(CtxKeyProvider).(provider.ProxyProvider)
+func updateProvider(ctx *zoox.Context) {
+	provider, err := getProviderFromContext(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusNotFound, err)
+		return
+	}
+
+	if err := provider.Update(); err != nil {
+		ctx.JSON(http.StatusServiceUnavailable, newError(err.Error()))
+		return
+	}
+
+	ctx.Status(http.StatusNoContent)
+}
+
+func healthCheckProvider(ctx *zoox.Context) {
+	provider, err := getProviderFromContext(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusNotFound, err)
+		return
+	}
+
 	provider.HealthCheck()
-	render.NoContent(w, r)
+
+	ctx.Status(http.StatusNoContent)
 }
 
-func parseProviderName(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		name := getEscapeParam(r, "providerName")
-		ctx := context.WithValue(r.Context(), CtxKeyProviderName, name)
-		next.ServeHTTP(w, r.WithContext(ctx))
+func getProxyFromProvider(ctx *zoox.Context) {
+	proxy, err := getProxyInProviderFromContext(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusNotFound, err)
+		return
+	}
+
+	ctx.JSON(http.StatusOK, proxy)
+}
+
+func getProxyDelayFromProvider(ctx *zoox.Context) {
+	url := ctx.Query().Get("url").String()
+	timeout := ctx.Query().Get("timeout").Int()
+
+	proxy, err := getProxyInProviderFromContext(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusNotFound, err)
+		return
+	}
+
+	ctx2, cancel := context.WithTimeout(context.Background(), time.Millisecond*time.Duration(timeout))
+	defer cancel()
+
+	delay, meanDelay, err := proxy.URLTest(ctx2, url)
+	if ctx2.Err() != nil {
+		ctx.JSON(http.StatusGatewayTimeout, ErrRequestTimeout)
+		return
+	}
+
+	if err != nil || delay == 0 {
+		ctx.JSON(http.StatusServiceUnavailable, newError("An error occurred in the delay test"))
+		return
+	}
+
+	ctx.JSON(http.StatusOK, zoox.H{
+		"delay":     delay,
+		"meanDelay": meanDelay,
 	})
 }
 
-func findProviderByName(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		name := r.Context().Value(CtxKeyProviderName).(string)
-		providers := tunnel.Providers()
-		provider, exist := providers[name]
-		if !exist {
-			render.Status(r, http.StatusNotFound)
-			render.JSON(w, r, ErrNotFound)
-			return
-		}
+func getProxyInProviderFromContext(ctx *zoox.Context) (C.Proxy, error) {
+	provider, err := getProviderFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
 
-		ctx := context.WithValue(r.Context(), CtxKeyProvider, provider)
-		next.ServeHTTP(w, r.WithContext(ctx))
+	proxyName := ctx.Param().Get("name").String()
+
+	proxy, ok := lo.Find(provider.Proxies(), func(proxy C.Proxy) bool {
+		return proxy.Name() == proxyName
 	})
+	if !ok {
+		return nil, ErrNotFound
+	}
+
+	return proxy, nil
 }
 
-func findProviderProxyByName(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var (
-			name = r.Context().Value(CtxKeyProxyName).(string)
-			pd   = r.Context().Value(CtxKeyProvider).(provider.ProxyProvider)
-		)
-		proxy, exist := lo.Find(pd.Proxies(), func(proxy C.Proxy) bool {
-			return proxy.Name() == name
-		})
+func getProviderFromContext(ctx *zoox.Context) (provider.ProxyProvider, error) {
+	name := ctx.Param().Get("providerName").String()
+	providers := tunnel.Providers()
+	provider, exist := providers[name]
+	if !exist {
+		return nil, ErrNotFound
+	}
 
-		if !exist {
-			render.Status(r, http.StatusNotFound)
-			render.JSON(w, r, ErrNotFound)
-			return
-		}
-
-		ctx := context.WithValue(r.Context(), CtxKeyProxy, proxy)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
+	return provider, nil
 }

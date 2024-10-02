@@ -4,16 +4,8 @@ import (
 	"net/http"
 
 	"github.com/doreamon-design/clash/tunnel"
-
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/render"
+	"github.com/go-zoox/zoox"
 )
-
-func ruleRouter() http.Handler {
-	r := chi.NewRouter()
-	r.Get("/", getRules)
-	return r
-}
 
 type Rule struct {
 	Type    string `json:"type"`
@@ -21,7 +13,7 @@ type Rule struct {
 	Proxy   string `json:"proxy"`
 }
 
-func getRules(w http.ResponseWriter, r *http.Request) {
+func getRules(ctx *zoox.Context) {
 	rawRules := tunnel.Rules()
 
 	rules := []Rule{}
@@ -33,7 +25,7 @@ func getRules(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	render.JSON(w, r, render.M{
+	ctx.JSON(http.StatusOK, zoox.H{
 		"rules": rules,
 	})
 }

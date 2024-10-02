@@ -63,6 +63,11 @@ jobs:
         run: |
           echo "Docker Tags: ${{ steps.meta.outputs.tags }}"
 
+      - name: Run Pipeline
+        uses: zmicro-design/action-pipeline@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
       - name: Build and push
         uses: zmicro-design/action-docker-build@v1
         with:

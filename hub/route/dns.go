@@ -6,49 +6,39 @@ import (
 	"net/http"
 
 	"github.com/doreamon-design/clash/component/resolver"
+	"github.com/go-zoox/zoox"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/render"
 	"github.com/miekg/dns"
 	"github.com/samber/lo"
 )
 
-func dnsRouter() http.Handler {
-	r := chi.NewRouter()
-	r.Get("/query", queryDNS)
-	return r
-}
-
-func queryDNS(w http.ResponseWriter, r *http.Request) {
+func queryDNS(ctx *zoox.Context) {
 	if resolver.DefaultResolver == nil {
-		render.Status(r, http.StatusInternalServerError)
-		render.JSON(w, r, newError("DNS section is disabled"))
+		ctx.JSON(http.StatusInternalServerError, newError("DNS section is disabled"))
 		return
 	}
 
-	name := r.URL.Query().Get("name")
-	qTypeStr, _ := lo.Coalesce(r.URL.Query().Get("type"), "A")
+	name := ctx.Query().Get("name").String()
+	qTypeStr, _ := lo.Coalesce(ctx.Query().Get("type").String(), "A")
 
 	qType, exist := dns.StringToType[qTypeStr]
 	if !exist {
-		render.Status(r, http.StatusBadRequest)
-		render.JSON(w, r, newError("invalid query type"))
+		ctx.JSON(http.StatusBadRequest, newError("invalid query type"))
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), resolver.DefaultDNSTimeout)
+	c, cancel := context.WithTimeout(context.Background(), resolver.DefaultDNSTimeout)
 	defer cancel()
 
 	msg := dns.Msg{}
 	msg.SetQuestion(dns.Fqdn(name), qType)
-	resp, err := resolver.DefaultResolver.ExchangeContext(ctx, &msg)
+	resp, err := resolver.DefaultResolver.ExchangeContext(c, &msg)
 	if err != nil {
-		render.Status(r, http.StatusInternalServerError)
-		render.JSON(w, r, newError(err.Error()))
+		ctx.JSON(http.StatusInternalServerError, newError(err.Error()))
 		return
 	}
 
-	responseData := render.M{
+	responseData := zoox.H{
 		"Status":   resp.Rcode,
 		"Question": resp.Question,
 		"TC":       resp.Truncated,
@@ -58,9 +48,9 @@ func queryDNS(w http.ResponseWriter, r *http.Request) {
 		"CD":       resp.CheckingDisabled,
 	}
 
-	rr2Json := func(rr dns.RR, _ int) render.M {
+	rr2Json := func(rr dns.RR, _ int) zoox.H {
 		header := rr.Header()
-		return render.M{
+		return zoox.H{
 			"name": header.Name,
 			"type": header.Rrtype,
 			"TTL":  header.Ttl,
@@ -78,5 +68,5 @@ func queryDNS(w http.ResponseWriter, r *http.Request) {
 		responseData["Additional"] = lo.Map(resp.Extra, rr2Json)
 	}
 
-	render.JSON(w, r, responseData)
+	ctx.JSON(http.StatusOK, responseData)
 }

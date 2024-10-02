@@ -89,15 +89,15 @@ func main() {
 		}
 
 		if err := config.Init(C.Path.HomeDir()); err != nil {
-			log.Fatalln("Initial configuration directory error: %s", err.Error())
+			return fmt.Errorf("failed to initial configuration directory: %s", err.Error())
 		}
 
 		if testConfig {
 			if _, err := executor.Parse(); err != nil {
 				log.Errorln(err.Error())
-				fmt.Printf("configuration file %s test failed\n", C.Path.Config())
-				os.Exit(1)
+				return fmt.Errorf("configuration file %s test failed", C.Path.Config())
 			}
+
 			fmt.Printf("configuration file %s test is successful\n", C.Path.Config())
 			return nil
 		}
@@ -114,7 +114,7 @@ func main() {
 		}
 
 		if err := hub.Parse(options...); err != nil {
-			log.Fatalln("Parse config error: %s", err.Error())
+			return fmt.Errorf("failed to parse config: %s", err.Error())
 		}
 
 		termSign := make(chan os.Signal, 1)
@@ -129,7 +129,7 @@ func main() {
 				if cfg, err := executor.ParseWithPath(C.Path.Config()); err == nil {
 					executor.ApplyConfig(cfg, true)
 				} else {
-					log.Errorln("Parse config error: %s", err.Error())
+					log.Errorln("failed to parse config: %s", err.Error())
 				}
 			}
 		}
